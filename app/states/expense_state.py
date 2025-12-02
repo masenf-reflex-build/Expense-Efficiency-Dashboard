@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import os
 import logging
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 
 class ExpenseReport(TypedDict):
@@ -36,21 +36,26 @@ class EmployeeSpending(TypedDict):
     avg: float
 
 
+class EmployeeOption(TypedDict):
+    label: str
+    value: str
+
+
+class CategoryOption(TypedDict):
+    label: str
+    value: str
+
+
 class ExpenseState(GoogleAuthState):
     expenses: list[ExpenseReport] = []
     start_date: str = "2024-03-01"
     end_date: str = datetime.now().strftime("%Y-%m-%d")
 
     @rx.event
-    def load_expenses(self):
+    async def load_expenses(self):
         """Fetch expenses from the database."""
-        db_url = os.getenv("REFLEX_DB_URL")
-        if not db_url:
-            print("Warning: REFLEX_DB_URL environment variable not set.")
-            return
-        try:
-            engine = create_engine(db_url)
-            with engine.connect() as conn:
+        async with rx.asession() as session:
+            try:
                 query = text("""
                     SELECT 
                         e.expense_id,
@@ -67,7 +72,8 @@ class ExpenseState(GoogleAuthState):
                     JOIN expense_categories ec ON e.category_id = ec.category_id
                     ORDER BY e.expense_date DESC
                 """)
-                result = conn.execute(query)
+                result = await session.execute(query)
+                rows = result.all()
                 self.expenses = [
                     {
                         "id": str(row[0]),
@@ -78,10 +84,10 @@ class ExpenseState(GoogleAuthState):
                         "description": row[6] or "",
                         "status": row[7],
                     }
-                    for row in result
+                    for row in rows
                 ]
-        except Exception as e:
-            logging.exception(f"Error loading expenses: {e}")
+            except Exception as e:
+                logging.exception(f"Error loading expenses: {e}")
 
     @rx.var
     def filtered_expenses(self) -> list[ExpenseReport]:
@@ -114,6 +120,130 @@ class ExpenseState(GoogleAuthState):
     @rx.event
     def set_end_date(self, date: str):
         self.end_date = date
+
+    is_create_modal_open: bool = False
+    employee_options: list[EmployeeOption] = []
+    category_options: list[CategoryOption] = []
+    new_expense_employee_id: str = ""
+    new_expense_date: str = datetime.now().strftime("%Y-%m-%d")
+    new_expense_category_id: str = ""
+    new_expense_amount: str = ""
+    new_expense_description: str = ""
+    new_expense_receipt_url: str = ""
+
+    @rx.event
+    def set_new_expense_employee_id(self, value: str):
+        self.new_expense_employee_id = value
+
+    @rx.event
+    def set_new_expense_date(self, value: str):
+        self.new_expense_date = value
+
+    @rx.event
+    def set_new_expense_category_id(self, value: str):
+        self.new_expense_category_id = value
+
+    @rx.event
+    def set_new_expense_amount(self, value: str):
+        self.new_expense_amount = value
+
+    @rx.event
+    def set_new_expense_description(self, value: str):
+        self.new_expense_description = value
+
+    @rx.event
+    def set_new_expense_receipt_url(self, value: str):
+        self.new_expense_receipt_url = value
+
+    @rx.event
+    async def load_form_data(self):
+        """Fetch employees and categories for the dropdowns."""
+        async with rx.asession() as session:
+            try:
+                emp_query = text(
+                    "SELECT employee_id, first_name, last_name FROM employees ORDER BY last_name"
+                )
+                emp_result = await session.execute(emp_query)
+                self.employee_options = [
+                    {"label": f"{row[1]} {row[2]}", "value": str(row[0])}
+                    for row in emp_result
+                ]
+                cat_query = text(
+                    "SELECT category_id, category_name FROM expense_categories ORDER BY category_name"
+                )
+                cat_result = await session.execute(cat_query)
+                self.category_options = [
+                    {"label": row[1], "value": str(row[0])} for row in cat_result
+                ]
+            except Exception as e:
+                logging.exception(f"Error loading form data: {e}")
+
+    @rx.event
+    async def open_create_modal(self):
+        """Opens the create modal and loads data."""
+        self.is_create_modal_open = True
+        self.new_expense_date = datetime.now().strftime("%Y-%m-%d")
+        return ExpenseState.load_form_data
+
+    @rx.event
+    def close_create_modal(self):
+        """Closes the create modal and resets form."""
+        self.is_create_modal_open = False
+        self.new_expense_employee_id = ""
+        self.new_expense_category_id = ""
+        self.new_expense_amount = ""
+        self.new_expense_description = ""
+        self.new_expense_receipt_url = ""
+
+    @rx.event
+    async def create_expense(self):
+        """Creates a new expense and expense report in the database."""
+        if (
+            not self.new_expense_employee_id
+            or not self.new_expense_category_id
+            or (not self.new_expense_amount)
+        ):
+            return rx.toast.error("Please fill in all required fields.")
+        async with rx.asession() as session:
+            try:
+                report_query = text("""
+                    INSERT INTO expense_reports (employee_id, report_month, total_amount, submission_date, approval_status)
+                    VALUES (:emp_id, :date, :amount, NOW(), 'Pending')
+                    RETURNING report_id
+                """)
+                result = await session.execute(
+                    report_query,
+                    {
+                        "emp_id": int(self.new_expense_employee_id),
+                        "date": self.new_expense_date,
+                        "amount": float(self.new_expense_amount),
+                    },
+                )
+                report_id = result.scalar()
+                expense_query = text("""
+                    INSERT INTO expenses (report_id, expense_date, category_id, amount, description, receipt_url)
+                    VALUES (:report_id, :date, :cat_id, :amount, :desc, :url)
+                """)
+                await session.execute(
+                    expense_query,
+                    {
+                        "report_id": report_id,
+                        "date": self.new_expense_date,
+                        "cat_id": int(self.new_expense_category_id),
+                        "amount": float(self.new_expense_amount),
+                        "desc": self.new_expense_description,
+                        "url": self.new_expense_receipt_url,
+                    },
+                )
+                await session.commit()
+            except Exception as e:
+                logging.exception(f"Error creating expense: {e}")
+                return rx.toast.error("Failed to create expense.")
+        self.close_create_modal()
+        return [
+            rx.toast.success("Expense created successfully"),
+            ExpenseState.load_expenses,
+        ]
 
     @rx.var
     def daily_spending(self) -> list[DailySpending]:

@@ -3,7 +3,7 @@ from reflex_google_auth import google_oauth_provider
 from app.states.expense_state import ExpenseState, EmployeeSpending
 from app.components.charts import cash_flow_chart, category_pie_chart
 from app.components.tables import employee_table, expense_table
-from app.components.modal import expense_detail_modal
+from app.components.modal import expense_detail_modal, create_expense_modal
 from app.components.landing import landing_page
 
 
@@ -137,6 +137,12 @@ def dashboard_content() -> rx.Component:
                     ),
                     class_name="flex items-center gap-2",
                 ),
+                rx.el.button(
+                    rx.icon("plus", class_name="h-4 w-4 mr-2"),
+                    "Create New Expense",
+                    on_click=ExpenseState.open_create_modal,
+                    class_name="ml-4 flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm",
+                ),
                 class_name="flex items-center",
             ),
             class_name="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8",
@@ -189,6 +195,7 @@ def dashboard_content() -> rx.Component:
             class_name="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8",
         ),
         expense_detail_modal(),
+        create_expense_modal(),
         class_name="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8",
     )
 

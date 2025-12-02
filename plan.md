@@ -43,3 +43,16 @@
 - [x] Display user profile information (name, email, picture) in header when authenticated
 - [x] Add logout functionality with button in the header
 - [x] Test authentication flow and verify login page displays correctly
+
+---
+
+## Phase 6: Create New Expense Functionality ✅
+- [x] Add "Create New Expense" button in dashboard header
+- [x] Create modal component with expense creation form
+- [x] Add form fields: employee dropdown, date picker, category dropdown, amount, description, receipt URL
+- [x] Implement load_form_data event to fetch employees and categories from database
+- [x] Implement create_expense event to insert new expense into database
+- [x] Add form validation for required fields
+- [x] Implement auto-refresh of expense list after successful creation
+- [x] Add success/error toast notifications
+- [x] Test database insertion and verify expense creation works correctly
