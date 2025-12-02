@@ -220,4 +220,4 @@ app = rx.App(
         ),
     ],
 )
-app.add_page(index, route="/", on_load=ExpenseState.load_expenses)
+app.add_page(index, route="/", on_load=ExpenseState.load_expenses, title="REFLEXpense Tracker")
