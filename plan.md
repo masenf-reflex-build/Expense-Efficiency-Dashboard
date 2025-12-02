@@ -56,3 +56,5 @@
 - [x] Implement auto-refresh of expense list after successful creation
 - [x] Add success/error toast notifications
 - [x] Test database insertion and verify expense creation works correctly
+
+- [ ] Party on garth
